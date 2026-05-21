@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Cormorant Garamond", Georgia, serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "Fira Code", monospace;
+  
+  --color-gold-100: #fbf8f3;
+  --color-gold-200: #f3e6d0;
+  --color-gold-400: #e2c08d;
+  --color-gold-500: #c5a473;
+  --color-gold-600: #a98858;
+  
+  --color-mystic-950: #060709;
+  --color-mystic-900: #0a0c10;
+  --color-mystic-800: #12151d;
+  --color-mystic-700: #1b202c;
+  --color-mystic-600: #2a3142;
+  --color-mystic-300: #8c97ac;
+}
+
+/* Custom styles for organic, smooth contemplation experience */
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-mystic-950);
+  background-image: radial-gradient(circle at 50% 0%, rgba(197, 164, 115, 0.08) 0%, rgba(6, 7, 9, 0) 70%);
+  overflow-x: hidden;
+}
+
+/* Contemplative breath pulse animation helper */
+@keyframes breath {
+  0%, 100% {
+    transform: scale(0.92);
+    opacity: 0.4;
+    filter: blur(10px);
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.95;
+    filter: blur(4px);
+  }
+}
+
+.breathing-circle-glow {
+  animation: breath 8s ease-in-out infinite;
+}
+
+/* Ambient particle glow */
+.ambient-fog {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  opacity: 0.25;
+  mix-blend-mode: screen;
+  transition: all 4s ease-in-out;
+}
+
+/* Custom audio-visualizer peak styles */
+.viz-bar {
+  transition: height 0.15s ease-out;
+}
+

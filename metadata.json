@@ -1,0 +1,6 @@
+{
+  "name": "Santuário",
+  "description": "Plataforma contemplativa cristã e santuário digital para oração guiada, presença e conexão emocional com Deus.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
