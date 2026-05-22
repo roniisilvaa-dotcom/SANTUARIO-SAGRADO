@@ -1,15 +1,11 @@
 import express from "express";
-import path from "path";
 import dotenv from "dotenv";
 import Groq from "groq-sdk";
-import { createServer as createViteServer } from "vite";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
-
-const PORT = process.env.PORT || 3000;
 
 let groqClient: Groq | null = null;
 function getGroq(): Groq {
@@ -90,8 +86,8 @@ app.post("/api/journal/reflect", async (req, res) => {
 Contexto emocional: "${emotionContext || 'Sem contexto'}".
 
 Gere:
-1. reflection: resposta empática e pastoral de 1-2 parágrafos
-2. prayerFocus: frase curta para foco de oração silenciosa
+1. reflection: resposta empática e pastoral de 1-2 parágrafos acolhendo e orientando para a graça de Deus
+2. prayerFocus: uma frase curta e profunda para foco de oração silenciosa
 
 Responda APENAS com JSON válido.`
         }
@@ -110,24 +106,4 @@ Responda APENAS com JSON válido.`
   }
 });
 
-async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Santuário] Server running on http://localhost:${PORT}`);
-  });
-}
-
-startServer();
+export default app;
