@@ -19,12 +19,46 @@
   --color-mystic-300: #8c97ac;
 }
 
+/* iOS safe areas */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
 /* Custom styles for organic, smooth contemplation experience */
-body {
+html, body {
   font-family: var(--font-sans);
-  background-color: var(--color-mystic-950);
-  background-image: radial-gradient(circle at 50% 0%, rgba(197, 164, 115, 0.08) 0%, rgba(6, 7, 9, 0) 70%);
+  background-color: #0f0c08;
   overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Smooth native-feel scrolling */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Remove iOS input zoom */
+input, textarea, select {
+  font-size: 16px !important;
+}
+
+/* Bottom nav safe area padding */
+.nav-safe-pad {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Hero top safe area */
+.hero-top-pad {
+  padding-top: calc(3.5rem + env(safe-area-inset-top, 0px));
+}
+
+/* Scrollable content bottom clearance */
+.content-safe-bottom {
+  padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
 }
 
 /* Contemplative breath pulse animation helper */

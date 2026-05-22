@@ -14,8 +14,8 @@ import {
   getCommunalPrayers, addCommunalPrayer, clickPrayerAmen,
 } from "./lib/firebase";
 
-const mountainSunset = "/src/assets/images/santuario_mountain_sunset_1779406835686.png";
-const forestRiver = "/src/assets/images/santuario_forest_river_1779406851043.png";
+import mountainSunset from "./assets/images/santuario_mountain_sunset_1779406835686.png";
+import forestRiver from "./assets/images/santuario_forest_river_1779406851043.png";
 
 export default function App() {
   const [userName, setUserName] = useState<string>(() => localStorage.getItem("santuario_username") || "João");
@@ -296,10 +296,9 @@ export default function App() {
   ───────────────────────────────────────────────────────── */
   return (
     <div className="min-h-screen bg-[#0f0c08] text-[#f5f0e8] font-sans overflow-x-hidden">
-      <div className="max-w-[440px] mx-auto relative min-h-screen flex flex-col">
 
         {/* ══ SCROLLABLE CONTENT ══ */}
-        <div className="flex-1 overflow-y-auto pb-24">
+        <div className="content-safe-bottom">
 
           {/* ══════════════ TAB 0 — INÍCIO ══════════════ */}
           {activeWebTab === 0 && (
@@ -311,7 +310,7 @@ export default function App() {
                 <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-[#0f0c08]/20 to-[#0f0c08]" />
 
                 {/* Header bar */}
-                <div className="relative z-10 flex items-center justify-between px-5 pt-14">
+                <div className="relative z-10 flex items-center justify-between px-5 hero-top-pad">
                   <button onClick={() => setShowAuthModal(true)}>
                     <Menu className="w-6 h-6 text-white/90" />
                   </button>
@@ -464,7 +463,7 @@ export default function App() {
 
           {/* ══════════════ TAB 1 — EXPLORAR (CHECK-IN) ══════════════ */}
           {activeWebTab === 1 && (
-            <div className="px-4 pt-14 pb-6">
+            <div className="px-4 pb-6 hero-top-pad">
               <div className="flex items-center gap-3 mb-6">
                 <button
                   onClick={() => setActiveWebTab(0)}
@@ -540,7 +539,7 @@ export default function App() {
                 <div className="absolute inset-0 bg-gradient-to-b from-[#0f0c08]/85 to-[#0f0c08]" />
               </div>
 
-              <div className="relative z-10 px-4 pt-14 pb-6 space-y-4">
+              <div className="relative z-10 px-4 pb-6 space-y-4 hero-top-pad">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                   <button onClick={() => setActiveWebTab(0)} className="w-9 h-9 bg-white/5 rounded-full flex items-center justify-center">
@@ -670,7 +669,7 @@ export default function App() {
 
           {/* ══════════════ TAB 3 — COMUNIDADE ══════════════ */}
           {activeWebTab === 3 && (
-            <div className="px-4 pt-14 pb-6">
+            <div className="px-4 pb-6 hero-top-pad">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h2 className="text-[20px] font-serif text-white font-semibold">Comunidade</h2>
@@ -849,7 +848,7 @@ export default function App() {
 
           {/* ══════════════ TAB 4 — PERFIL ══════════════ */}
           {activeWebTab === 4 && (
-            <div className="px-4 pt-14 pb-6">
+            <div className="px-4 pb-6 hero-top-pad">
               {/* Profile header */}
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-16 h-16 rounded-full bg-amber-900/30 border-2 border-[#c9983e]/25 flex items-center justify-center overflow-hidden shrink-0">
@@ -990,7 +989,7 @@ export default function App() {
 
         {/* ══ FIXED BOTTOM NAVIGATION ══ */}
         <nav className="fixed bottom-0 inset-x-0 z-50 bg-[#0d0a06]/95 backdrop-blur-xl border-t border-white/5">
-          <div className="max-w-[440px] mx-auto flex items-center justify-around px-2 pt-2 pb-4">
+          <div className="flex items-center justify-around px-2 pt-2.5 nav-safe-pad">
             {[
               { label: "Início", icon: Home, idx: 0 },
               { label: "Explorar", icon: Search, idx: 1 },
@@ -1004,7 +1003,7 @@ export default function App() {
                 <button
                   key={tab.idx}
                   onClick={() => setActiveWebTab(tab.idx)}
-                  className="flex flex-col items-center gap-1 py-1 px-4 transition-all active:scale-90"
+                  className="flex flex-col items-center gap-1 py-1 px-4 active:scale-90 transition-transform"
                 >
                   <Icon className={`w-[22px] h-[22px] transition-colors ${active ? "text-[#d4a540]" : "text-white/25"}`} />
                   <span className={`text-[10px] font-medium transition-colors ${active ? "text-[#d4a540]" : "text-white/25"}`}>
@@ -1016,7 +1015,6 @@ export default function App() {
           </div>
         </nav>
 
-      </div>
 
       {/* ══ AUTH MODAL ══ */}
       {showAuthModal && (
