@@ -25,6 +25,19 @@ export interface UserProfile {
   joinedDate: string;
   streak: number;
   lastCheckIn?: string;
+  email?: string;
+  subscriptionStatus?: "free" | "premium";
+  subscriptionExpiresAt?: string;
+}
+
+export interface PrayerRequest {
+  id: string;
+  authorId: string;
+  authorName: string;
+  text: string;
+  createdAt: string;
+  amenCount: number;
+  amens?: string[];
 }
 
 export interface EmotionOption {

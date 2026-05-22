@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 1. Global Safety Net Custom Catch-All Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 3. Reusable Primative Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming(req) {
+      return req.resource.data;
+    }
+
+    function existing(res) {
+      return res.data;
+    }
+
+    // Validate UserProfile Fields
+    function isValidUserProfile(data) {
+      return data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 120 &&
+             data.streakCount is int &&
+             data.subscriptionStatus is string && (data.subscriptionStatus == 'free' || data.subscriptionStatus == 'premium');
+    }
+
+    // Validate JournalEntry Fields
+    function isValidJournalEntry(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.date is string &&
+             data.text is string && data.text.size() <= 10000 &&
+             data.emotion is string && data.emotion.size() <= 50;
+    }
+
+    // Validate PrayerRequest Fields
+    function isValidPrayerRequest(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.authorId is string && data.authorId.size() <= 128 &&
+             data.authorName is string && data.authorName.size() <= 100 &&
+             data.text is string && data.text.size() <= 1000 &&
+             data.amenCount is int;
+    }
+
+    // 2. Collection Rules with Path Variable Hardening
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create, update: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming(request));
+
+      // Personal private Diary Entries
+      match /diary/{entryId} {
+        allow read: if isOwner(userId) && isValidId(userId) && isValidId(entryId);
+        allow create, update: if isOwner(userId) && isValidId(userId) && isValidId(entryId) && isValidJournalEntry(incoming(request));
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(entryId);
+      }
+    }
+
+    // 2. Communal prayer request wall
+    match /prayers/{prayerId} {
+      // O(1) query-driven read protection (Query Enforcer check against isSignedIn)
+      allow list: if isSignedIn();
+      allow get: if isSignedIn() && isValidId(prayerId);
+      
+      // Strict author identity check on create
+      allow create: if isSignedIn() && isValidId(prayerId) && 
+                    isValidPrayerRequest(incoming(request)) &&
+                    incoming(request).authorId == request.auth.uid;
+      
+      // Portioned update rules: Only allow altering the 'amenCount' and adding author UID to 'amens' list
+      allow update: if isSignedIn() && isValidId(prayerId) && 
+                    incoming(request).amenCount == existing(resource).amenCount + 1;
+    }
+  }
+}

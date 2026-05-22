@@ -36,9 +36,23 @@ import {
   ChevronDown,
   Monitor
 } from "lucide-react";
-import { ExperienceData, JournalEntry, UserProfile, EmotionOption } from "./types";
+import { ExperienceData, JournalEntry, UserProfile, EmotionOption, PrayerRequest } from "./types";
 import AmbientSoundPlayer from "./components/AmbientSoundPlayer";
 import { SUPPORTED_EMOTIONS } from "./components/SoulCheckIn";
+import {
+  isRealFirebase,
+  registerAuthStateListener,
+  loginWithGoogle,
+  loginWithEmailSimulated,
+  logoutPilgrim,
+  updatePilgrimProfile,
+  getDiaryEntries,
+  addDiaryEntry,
+  deleteDiaryEntry,
+  getCommunalPrayers,
+  addCommunalPrayer,
+  clickPrayerAmen,
+} from "./lib/firebase";
 
 const mountainSunset = "/src/assets/images/santuario_mountain_sunset_1779406835686.png";
 const forestRiver = "/src/assets/images/santuario_forest_river_1779406851043.png";
@@ -59,7 +73,52 @@ export default function App() {
   const [isAudioPlaying, setIsAudioPlaying] = useState<boolean>(false);
   const [audioProgressSeconds, setAudioProgressSeconds] = useState<number>(157); // 02:37 simulation
   const [hasCompletedCheckIn, setHasCompletedCheckIn] = useState<boolean>(false);
+
+  // New Authentic users & signatures state managers
+  const [pilgrimUser, setPilgrimUser] = useState<any | null>(null);
+  const [pilgrimProfile, setPilgrimProfile] = useState<UserProfile | null>(null);
   
+  // Custom dialog togglers
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState<boolean>(false);
+  const [activeDiarySubTab, setActiveDiarySubTab] = useState<"memorial" | "mural" | "pastor">("memorial");
+
+  // Sign-in controls
+  const [authEmailInput, setAuthEmailInput] = useState<string>("");
+  const [authNameInput, setAuthNameInput] = useState<string>("");
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState<boolean>(false);
+
+  // Subscription gateways parameters
+  const [selectedPlanId, setSelectedPlanId] = useState<"mensal" | "anual">("anual");
+  const [paymentMethod, setPaymentMethod] = useState<"pix" | "cartao">("pix");
+  const [isCheckoutProcessing, setIsCheckoutProcessing] = useState<boolean>(false);
+  const [isCheckoutFinished, setIsCheckoutFinished] = useState<boolean>(false);
+  const [simulatedPixCopied, setSimulatedPixCopied] = useState<boolean>(false);
+
+  // Simulated credit card params
+  const [ccNumber, setCcNumber] = useState<string>("");
+  const [ccName, setCcName] = useState<string>("");
+  const [ccExp, setCcExp] = useState<string>("");
+  const [ccCvv, setCcCvv] = useState<string>("");
+
+  // Communal live prayer feed items
+  const [communalPrayersList, setCommunalPrayersList] = useState<PrayerRequest[]>([]);
+  const [newPrayerText, setNewPrayerText] = useState<string>("");
+  const [isPublishingPrayer, setIsPublishingPrayer] = useState<boolean>(false);
+
+  // Chat/Pastoral Counseling interactive states (Premium item)
+  const [pastorChatText, setPastorChatText] = useState<string>("");
+  const [pastorChatDialog, setPastorChatDialog] = useState<{ role: "pilgrim" | "pastor"; text: string }[]>([
+    { role: "pastor", text: "Graça e paz, meu irmão. Que bom termos este momento. Como posso clamar a Deus junto com você hoje ou esclarecer alguma passagem das escrituras?" }
+  ]);
+  const [isPastorAnswering, setIsPastorAnswering] = useState<boolean>(false);
+
+  // Spoken prayer vocal speech synthesis system
+  const [voiceRate, setVoiceRate] = useState<number>(0.75); // extra serene, very calm and passive slow speed
+  const [selectedVoiceGender, setSelectedVoiceGender] = useState<"female" | "male">("male");
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>("");
+
   // Custom prayer notes
   const [customPrayerNote, setCustomPrayerNote] = useState<string>("");
 
@@ -81,7 +140,7 @@ export default function App() {
   const [newJournalText, setNewJournalText] = useState<string>("");
   const [isGeneratingExperience, setIsGeneratingExperience] = useState<boolean>(false);
   const [experienceData, setExperienceData] = useState<ExperienceData>({
-    prayer: "Pai, Entrego a Ti todas as minhas preocupações e ansiedades. Tu conheces meu coração e sabes o que preciso. Acalma minha alma e me faz confiar mais em Ti. Em nome de Jesus, Amém.",
+    prayer: "Pai, Entrego a Ti todas as minhas preocupações e ansiedades. Tu conheces meu coração e sabes o que preciso. Acalma minha alma e me faz confiar mais in Ti. Em nome de Jesus, Amém.",
     verse: {
       reference: "Salmos 37:5",
       text: "Entrega o teu caminho ao Senhor; confia nele, e o mais Ele fará.",
@@ -92,6 +151,205 @@ export default function App() {
   });
 
   const [streakCount, setStreakCount] = useState<number>(12); // Simulated streak
+
+  // Premium gate state resolver
+  const isPremiumActive = () => {
+    return pilgrimProfile?.subscriptionStatus === "premium";
+  };
+
+  // Synchronous authentications state registration
+  useEffect(() => {
+    const unsubscribe = registerAuthStateListener((user, profile) => {
+      setPilgrimUser(user);
+      setPilgrimProfile(profile);
+      if (profile) {
+        setUserName(profile.name);
+        setStreakCount(profile.streak || 1);
+        
+        // Sync diary entries in real-time from Firestore!
+        getDiaryEntries(user.uid || "mock_user_uid").then((entries) => {
+          if (entries && entries.length > 0) {
+            setDiaryEntries(entries);
+          }
+        });
+      } else {
+        setUserName("João");
+        setDiaryEntries([
+          {
+            id: "1",
+            date: "21 Mai, 23:31",
+            text: "É impressionante como Deus sempre fala comigo exatamente no momento em que eu mais preciso. Hoje aprendi a descansar mais em Suas promessas e a acalmar os ruídos da minha alma.",
+            emotion: "ansiedade",
+            reflection: "Deus cuida de você de maneira inteiramente pessoal. No silêncio, a voz de Dele se torna mais nítida.",
+            prayerFocus: "Descanse na promessa de Filipenses 4:7"
+          }
+        ]);
+      }
+    });
+
+    // Load initial community prayers
+    getCommunalPrayers().then((prPrayers) => {
+      setCommunalPrayersList(prPrayers);
+    });
+
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }, []);
+
+  // Subscribe plan action helper
+  const handleUpgradeToPremium = async () => {
+    const uid = pilgrimUser?.uid || "mock_user_uid";
+    const updatedProfile: UserProfile = {
+      ...(pilgrimProfile || { name: userName, email: "peregrino@santuario.app", joinedDate: new Date().toISOString(), streak: streakCount }),
+      subscriptionStatus: "premium" as "premium" | "free"
+    };
+
+    setIsCheckoutProcessing(true);
+    setTimeout(async () => {
+      try {
+        await updatePilgrimProfile(uid, updatedProfile);
+        setPilgrimProfile(updatedProfile);
+        setIsCheckoutProcessing(false);
+        setIsCheckoutFinished(true);
+      } catch (err) {
+        console.error("Upgrade error:", err);
+        setIsCheckoutProcessing(false);
+      }
+    }, 2200); // celestial simulated transaction time
+  };
+
+  // Custom AI pastoral advisory system
+  const handleSendPastorMessage = () => {
+    if (!pastorChatText.trim()) return;
+    
+    // Premium Wall: Pastoral feedback is locked for non-premium
+    if (!isPremiumActive()) {
+      setShowSubscriptionModal(true);
+      return;
+    }
+
+    const pilgrimMessage = { role: "pilgrim" as "pilgrim" | "pastor", text: pastorChatText };
+    setPastorChatDialog(prev => [...prev, pilgrimMessage]);
+    setPastorChatText("");
+    setIsPastorAnswering(true);
+
+    setTimeout(() => {
+      const responses = [
+        "Glorificado seja o Deus de toda consolação. Compreendo a profundidade do seu coração. Lembre-se que no Salmo 119:105 está escrito: 'Lâmpada para os meus pés é tua palavra, e luz para o meu caminho'. Continue buscando-O fielmente neste vale silencioso.",
+        "Que o Senhor te guie com águas tranquilas e refrigere tua alma. O jejum da carne e o clamar sincero atraem as misericórdias do Altíssimo, que nunca está longe daqueles que têm o coração quebrantado.",
+        "Meu amado peregrino, a paciência na provação gera a esperança que não frustra. Nas palavras do apóstolo Paulo no livro de Romanos 5:3-5, nos gloriamos nas próprias tribulações, sabendo que a tribulação produz perseverança, a perseverança produz experiência, e a experiência esperança."
+      ];
+      const randomResponse = { role: "pastor" as "pilgrim" | "pastor", text: responses[Math.floor(Math.random() * responses.length)] };
+      setPastorChatDialog(prev => [...prev, randomResponse]);
+      setIsPastorAnswering(false);
+    }, 1800);
+  };
+
+  // Shared prayer request operations
+  const handlePublishCommunalPrayer = async () => {
+    if (!newPrayerText.trim()) return;
+    setIsPublishingPrayer(true);
+    try {
+      const activeAuthorId = pilgrimUser?.uid || "mock_user_uid";
+      const activeAuthorName = pilgrimProfile?.name || userName || "Anônimo";
+      const added = await addCommunalPrayer(newPrayerText, activeAuthorId, activeAuthorName);
+      setCommunalPrayersList(prev => [added, ...prev]);
+      setNewPrayerText("");
+    } catch (e) {
+      console.error("Error creating prayer:", e);
+    } finally {
+      setIsPublishingPrayer(false);
+    }
+  };
+
+  const handleAmenClick = async (prayerId: string) => {
+    const activeUserId = pilgrimUser?.uid || "mock_user_uid";
+    try {
+      await clickPrayerAmen(prayerId, activeUserId);
+      setCommunalPrayersList(prev => prev.map(p => {
+        if (p.id === prayerId) {
+          if (p.amens?.includes(activeUserId)) {
+            return p;
+          }
+          return {
+            ...p,
+            amenCount: p.amenCount + 1,
+            amens: [...(p.amens || []), activeUserId]
+          };
+        }
+        return p;
+      }));
+    } catch (err) {
+      console.error("Error amening prayer:", err);
+    }
+  };
+
+  // Load available speech synthesis voices in browser
+  useEffect(() => {
+    const loadVoices = () => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+      }
+    };
+    loadVoices();
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
+
+  // Voice reader engine synced with isAudioPlaying status
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+
+    if (isAudioPlaying) {
+      window.speechSynthesis.cancel();
+      
+      const prayText = experienceData.prayer || "";
+      const textToSpeak = `${prayText}. Que esta oração acalme seu coração. Considere também nosso devocional contemplativo de hoje: ${experienceData.devotional}`;
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      utterance.lang = "pt-BR";
+      utterance.rate = voiceRate;
+      utterance.pitch = selectedVoiceGender === "male" ? 0.85 : 1.1;
+
+      // Select Portuguese voice preferencing matches
+      const ptVoices = availableVoices.filter(v => v.lang.includes("pt-BR") || v.lang.includes("pt_BR") || v.lang.includes("pt"));
+      if (ptVoices.length > 0) {
+        const genderVoice = ptVoices.find(v => {
+          const name = v.name.toLowerCase();
+          if (selectedVoiceGender === "male") {
+            return name.includes("daniel") || name.includes("felipe") || name.includes("silva") || name.includes("google português") || name.includes("male") || name.includes("masculino");
+          } else {
+            return name.includes("luciana") || name.includes("marinha") || name.includes("maria") || name.includes("francisca") || name.includes("female") || name.includes("feminino");
+          }
+        });
+        utterance.voice = genderVoice || ptVoices[0];
+      }
+
+      utterance.onboundary = (event) => {
+        // approximate progress timeline slider
+        const ratio = event.charIndex / textToSpeak.length;
+        setAudioProgressSeconds(Math.floor(ratio * 720));
+      };
+
+      utterance.onend = () => {
+        setIsAudioPlaying(false);
+        setAudioProgressSeconds(720);
+      };
+
+      utterance.onerror = (e) => {
+        console.warn("Speech synthesis notice:", e);
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } else {
+      window.speechSynthesis.cancel();
+    }
+
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, [isAudioPlaying, experienceData, voiceRate, selectedVoiceGender, availableVoices]);
 
   // Saving state
   useEffect(() => {
@@ -177,7 +435,7 @@ export default function App() {
   };
 
   // Submit manual diary text
-  const handleAddNewDiaryText = () => {
+  const handleAddNewDiaryText = async () => {
     if (!newJournalText.trim()) return;
     const date = new Date();
     const formattedDate = `${date.getDate()} ${date.toLocaleString("pt-BR", { month: "short" })}, ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
@@ -194,9 +452,26 @@ export default function App() {
       prayerFocus: `Aquiete-se e saiba que Ele é Deus. (Salmo 46:10)`
     };
 
-    setDiaryEntries([newEntry, ...diaryEntries]);
+    const updated = [newEntry, ...diaryEntries];
+    setDiaryEntries(updated);
     setNewJournalText("");
-    setStreakCount(prev => prev + 1); // Earn streak directly!
+    
+    const nextStreak = streakCount + 1;
+    setStreakCount(nextStreak); // Earn streak directly!
+
+    // Sync to Firestore if signed in
+    if (pilgrimUser) {
+      const uid = pilgrimUser.uid || "mock_user_uid";
+      try {
+        await addDiaryEntry(uid, newEntry);
+        await updatePilgrimProfile(uid, {
+          streak: nextStreak,
+          lastCheckIn: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error("Error syncing diary reflection to Firestore:", err);
+      }
+    }
   };
 
   const getActiveEmotionObject = () => {
@@ -347,14 +622,74 @@ export default function App() {
               </div>
 
               {/* Sidebar bottom indicators */}
-              <div className="mt-8 pt-4 border-t border-white/5 space-y-3" id="sidebar-footer-widget font-mono text-[10px]">
-                <div className="flex items-center gap-2.5 text-[10px] text-slate-400">
+              <div className="mt-8 pt-4 border-t border-white/5 space-y-3" id="sidebar-footer-widget" style={{ fontSize: "10px", fontFamily: "monospace" }}>
+                
+                {/* Simulated / Real State Status */}
+                <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-2">
+                  <div className="flex items-center justify-between text-[9px] font-mono uppercase font-bold text-slate-500">
+                    <span>Espaço de Fé</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  </div>
+                  <div className="text-[10px] text-slate-300 leading-normal font-sans">
+                    {pilgrimUser ? (
+                      <div className="space-y-1">
+                        <p className="font-serif text-[#d5b075] font-semibold">Peregrino: {pilgrimProfile?.name}</p>
+                        <button
+                          id="btn-logout"
+                          onClick={() => {
+                            logoutPilgrim();
+                          }}
+                          className="text-[9px] font-mono text-slate-400 hover:text-white underline uppercase tracking-wider"
+                        >
+                          Trocar de Altar
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <p className="text-slate-400">Inicie sua jornada integrada:</p>
+                        <button
+                          id="btn-login-sidebar"
+                          onClick={() => setShowAuthModal(true)}
+                          className="w-full py-1.5 px-3 bg-[#d5b075] hover:bg-[#cbad70] text-slate-950 rounded-lg text-[9px] font-mono font-bold uppercase tracking-wider transition-all"
+                        >
+                          Entrar / Registrar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Premium Gateway Trigger */}
+                <div className="p-3 bg-gradient-to-r from-amber-500/10 to-red-500/5 rounded-xl border border-amber-500/15 space-y-2">
+                  <div className="flex items-center justify-between text-[9px] font-mono uppercase font-bold text-amber-500">
+                    <span>Missão Semeador</span>
+                    <span>⭐</span>
+                  </div>
+                  <div className="text-[10px] font-sans leading-normal">
+                    {isPremiumActive() ? (
+                      <p className="text-emerald-400 font-serif italic text-center py-1">"Aliança Ativa. Que a graça transborde!"</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <p className="text-slate-400 leading-relaxed mb-2">Libere vozes e aconselhamento especializado: </p>
+                        <button
+                          id="btn-upgrade-sidebar"
+                          onClick={() => setShowSubscriptionModal(true)}
+                          className="w-full py-1.5 px-3 bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 rounded-lg font-mono font-bold text-[9px] uppercase tracking-wider hover:scale-102 transition-all block text-center"
+                        >
+                          Apoiar a Missão
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 text-[10px] text-slate-400 pt-1">
                   <Shield className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Criptografia de Alma Ativa</span>
                 </div>
-                <div className="p-3 bg-white/5 rounded-xl border border-white/5">
-                  <p className="text-[9px] text-[#d5b075] font-mono uppercase font-bold leading-none">Ambiente Ativo:</p>
-                  <p className="text-[11px] text-slate-300 font-serif font-semibold mt-1 italic">"{getActiveEmotionObject().label}"</p>
+                <div className="p-2 bg-slate-950/40 rounded-lg border border-white/5">
+                  <p className="text-[8px] text-[#d5b075] font-mono uppercase font-bold leading-none">Ambiente Ativo:</p>
+                  <p className="text-[10px] text-slate-300 font-serif font-semibold mt-1 italic leading-none">"{getActiveEmotionObject().label}"</p>
                 </div>
               </div>
 
@@ -757,6 +1092,79 @@ export default function App() {
                           </button>
                         </div>
 
+                        {/* Custom configuration for voice text-to-speech */}
+                        <div className="bg-slate-900/60 p-4 border border-[#d5b075]/10 rounded-2xl space-y-3 mt-4" id="vocal-reader-setup">
+                          <p className="text-[10px] font-mono text-[#d5b075] uppercase tracking-widest font-bold">Configuração da Voz Contemplativa (Falada)</p>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            {/* Voice selector */}
+                            <div className="space-y-1">
+                              <span className="text-[9px] text-slate-450 text-slate-400 font-sans block">Condutor do Clamor</span>
+                              <div className="flex bg-slate-950/60 border border-white/5 rounded-lg p-0.5" id="voice-gender-selector">
+                                <button
+                                  id="btn-voice-female"
+                                  type="button"
+                                  onClick={() => setSelectedVoiceGender("female")}
+                                  className={`flex-1 py-1 rounded text-[10px] font-medium font-serif transition-colors ${
+                                    selectedVoiceGender === "female" ? "bg-[#d5b075] text-slate-950" : "text-slate-400 hover:text-white"
+                                  }`}
+                                >
+                                  Pastora Luciana
+                                </button>
+                                <button
+                                  id="btn-voice-male"
+                                  type="button"
+                                  onClick={() => setSelectedVoiceGender("male")}
+                                  className={`flex-1 py-1 rounded text-[10px] font-medium font-serif transition-colors ${
+                                    selectedVoiceGender === "male" ? "bg-[#d5b075] text-slate-950" : "text-slate-400 hover:text-white"
+                                  }`}
+                                >
+                                  Pastor Daniel
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Rate speed selector */}
+                            <div className="space-y-1">
+                              <span className="text-[9px] text-slate-455 text-slate-400 font-sans block">Cadência de Meditação</span>
+                              <div className="flex bg-slate-950/60 border border-white/5 rounded-lg p-0.5" id="voice-rate-selector">
+                                <button
+                                  id="btn-rate-slow"
+                                  type="button"
+                                  onClick={() => setVoiceRate(0.75)}
+                                  className={`flex-1 py-1 rounded text-[10px] font-mono transition-colors ${
+                                    voiceRate === 0.75 ? "bg-[#d5b075] text-slate-950 font-bold" : "text-slate-400 hover:text-white"
+                                  }`}
+                                  title="Ritmo contemplativo silencioso"
+                                >
+                                  0.75x
+                                </button>
+                                <button
+                                  id="btn-rate-normal"
+                                  type="button"
+                                  onClick={() => setVoiceRate(0.85)}
+                                  className={`flex-1 py-1 rounded text-[10px] font-mono transition-colors ${
+                                    voiceRate === 0.85 ? "bg-[#d5b075] text-slate-950 font-bold" : "text-slate-400 hover:text-white"
+                                  }`}
+                                  title="Recomendado"
+                                >
+                                  0.85x
+                                </button>
+                                <button
+                                  id="btn-rate-faster"
+                                  type="button"
+                                  onClick={() => setVoiceRate(1.0)}
+                                  className={`flex-1 py-1 rounded text-[10px] font-mono transition-colors ${
+                                    voiceRate === 1.0 ? "bg-[#d5b075] text-slate-950 font-bold" : "text-slate-400 hover:text-white"
+                                  }`}
+                                >
+                                  1.00x
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
                       </div>
 
                     </div>
@@ -853,52 +1261,239 @@ export default function App() {
 
                     </div>
 
-                    {/* Right side column: Beautiful Memorial list and past advise feed */}
-                    <div className="lg:col-span-6 space-y-4">
+                    {/* Right side column: Beautiful Memorial list / Communal Prayer Wall / AI Pastor Chat */}
+                    <div className="lg:col-span-6 space-y-4" id="diary-right-column">
                       
-                      <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                        <span className="text-[10px] font-mono text-[#d5b075] tracking-widest font-bold uppercase">Memorial de Registros Salvados</span>
-                        <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest font-bold">Total: {diaryEntries.length} anotações</span>
+                      <div className="flex border-b border-white/10 pb-2 justify-between items-center bg-slate-950/20 p-2 rounded-xl">
+                        <div className="flex gap-4">
+                          <button
+                            id="tab-sub-memorial"
+                            onClick={() => setActiveDiarySubTab("memorial")}
+                            className={`pb-1 text-[11px] font-mono uppercase tracking-wider font-bold border-b-2 transition-all ${
+                              activeDiarySubTab === "memorial" 
+                                ? "border-[#d5b075] text-[#d5b075]" 
+                                : "border-transparent text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            Filhos da Fé ({diaryEntries.length})
+                          </button>
+                          <button
+                            id="tab-sub-mural"
+                            onClick={() => setActiveDiarySubTab("mural")}
+                            className={`pb-1 text-[11px] font-mono uppercase tracking-wider font-bold border-b-2 transition-all ${
+                              activeDiarySubTab === "mural" 
+                                ? "border-[#d5b075] text-[#d5b075]" 
+                                : "border-transparent text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            Mural de Clamores ({communalPrayersList.length})
+                          </button>
+                          <button
+                            id="tab-sub-pastor"
+                            onClick={() => setActiveDiarySubTab("pastor")}
+                            className={`pb-1 text-[11px] font-mono uppercase tracking-wider font-bold border-b-2 transition-all flex items-center gap-1 ${
+                              activeDiarySubTab === "pastor" 
+                                ? "border-[#d5b075] text-[#d5b075]" 
+                                : "border-transparent text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            Aconselhamento IA {isPremiumActive() ? "⭐" : "🔒"}
+                          </button>
+                        </div>
                       </div>
 
-                      {/* Scrolling list feed */}
-                      <div className="space-y-4 max-h-[440px] overflow-y-auto pr-2 scrollbar-thin">
-                        {diaryEntries.map((entry, eIdx) => (
-                          <div 
-                            key={entry.id} 
-                            className="p-5 bg-slate-950/40 border border-white/5 rounded-2xl space-y-4 hover:border-white/10 transition-colors relative"
-                            id={`web-diary-entry-${entry.id}`}
-                          >
-                            <span className="absolute top-4 right-5 text-[10px] font-mono text-slate-500 font-semibold">{entry.date}</span>
+                      {activeDiarySubTab === "memorial" && (
+                        /* PERSONAL MEMORIAL FEED */
+                        <div className="space-y-4">
+                          <p className="text-[10px] uppercase font-mono text-slate-400 tracking-wider">Histórico Pessoal de Orações e Graças:</p>
+                          <div className="space-y-4 max-h-[440px] overflow-y-auto pr-2 scrollbar-thin">
+                            {diaryEntries.length === 0 ? (
+                              <div className="p-8 text-center bg-slate-950/30 rounded-2xl border border-white/5 space-y-2">
+                                <p className="text-xs text-slate-400 italic">"Escreva seu primeiro clamor ao lado para começar seu memorial celeste."</p>
+                              </div>
+                            ) : (
+                              diaryEntries.map((entry) => (
+                                <div 
+                                  key={entry.id} 
+                                  className="p-5 bg-slate-950/40 border border-white/5 rounded-2xl space-y-4 hover:border-white/10 transition-colors relative"
+                                  id={`web-diary-entry-${entry.id}`}
+                                >
+                                  <span className="absolute top-4 right-5 text-[9px] font-mono text-slate-500 font-semibold">{entry.date}</span>
 
-                            <div className="flex items-center gap-2">
-                              <span className="px-2 py-0.5 rounded-full text-[8px] font-mono uppercase bg-[#d5b075]/15 border border-[#d5b075]/25 text-[#d5b075] font-semibold">{entry.emotion}</span>
-                              <div className="flex gap-0.5 ml-1">
-                                {[1, 2, 3, 4, 5].map((s) => (
-                                  <Star key={s} className={`w-2.5 h-2.5 fill-current ${s <= todayRating ? 'text-[#d5b075]' : 'text-slate-800'}`} />
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-2 py-0.5 rounded-full text-[8px] font-mono uppercase bg-[#d5b075]/15 border border-[#d5b075]/25 text-[#d5b075] font-semibold">{entry.emotion}</span>
+                                    <div className="flex gap-0.5 ml-1">
+                                      {[1, 2, 3, 4, 5].map((s) => (
+                                        <Star key={s} className={`w-2.5 h-2.5 fill-current ${s <= todayRating ? 'text-[#d5b075]' : 'text-slate-800'}`} />
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <p className="text-xs text-[#f3f1eb] leading-relaxed font-sans italic">
+                                    "{entry.text}"
+                                  </p>
+
+                                  {entry.reflection && (
+                                    <div className="bg-[#1e1a12]/35 border border-[#d5b075]/15 p-3.5 rounded-xl space-y-2">
+                                      <span className="text-[9px] font-mono text-[#d5b075] uppercase font-bold tracking-widest block">Conselhos Pastorais da Estrela</span>
+                                      <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
+                                        {entry.reflection}
+                                      </p>
+                                      <p className="text-[10px] text-indigo-200 font-mono italic leading-none pt-1 border-t border-white/5">
+                                        <strong>Foco meditativo:</strong> {entry.prayerFocus}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {activeDiarySubTab === "mural" && (
+                        /* COMMUNAL PRAYER FEED WALL */
+                        <div className="space-y-4">
+                          {/* Create/Publish Communal Prayer */}
+                          <div className="p-4 bg-[#121622]/40 border border-white/5 rounded-2xl space-y-3">
+                            <span className="text-[10px] font-mono text-[#d5b075] tracking-widest font-bold uppercase block">Pedir Oração aos Irmãos</span>
+                            <div className="flex gap-2">
+                              <input 
+                                id="communal-prayer-input"
+                                type="text"
+                                value={newPrayerText}
+                                onChange={(e) => setNewPrayerText(e.target.value)}
+                                placeholder="Clame por cura, família, libertação espiritual..."
+                                className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[#d5b075]"
+                              />
+                              <button
+                                id="btn-publish-communal-prayer"
+                                onClick={handlePublishCommunalPrayer}
+                                disabled={isPublishingPrayer || !newPrayerText.trim()}
+                                className="py-2 px-4 bg-gradient-to-r from-[#d5b075] to-[#cbad70] text-slate-950 rounded-xl text-xs font-mono font-bold uppercase tracking-wider"
+                              >
+                                {isPublishingPrayer ? "..." : "Clamar"}
+                              </button>
+                            </div>
+                          </div>
+
+                          <p className="text-[10px] uppercase font-mono text-slate-400 tracking-wider">Últimos Pedidos dos Peregrinos:</p>
+                          
+                          <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 scrollbar-thin">
+                            {communalPrayersList.map((prayer) => {
+                              const alreadyAmen = prayer.amens?.includes(pilgrimUser?.uid || "mock_user_uid");
+                              return (
+                                <div key={prayer.id} className="p-4 bg-slate-950/40 border border-white/5 rounded-xl space-y-2 relative" id={`prayer-card-${prayer.id}`}>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs font-serif font-semibold text-[#d5b075]">✝ {prayer.authorName}</span>
+                                    <span className="text-[8px] font-mono text-slate-500">{new Date(prayer.createdAt).toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' })}</span>
+                                  </div>
+                                  <p className="text-xs text-slate-200 leading-relaxed font-sans font-medium">"{prayer.text}"</p>
+                                  
+                                  <div className="flex justify-between items-center pt-2 border-t border-white/5">
+                                    <span className="text-[9px] font-mono text-slate-400 italic">Unidos nesta prece</span>
+                                    <button
+                                      id={`btn-prayer-amen-${prayer.id}`}
+                                      onClick={() => handleAmenClick(prayer.id)}
+                                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                                        alreadyAmen 
+                                          ? "bg-rose-500/10 border border-rose-500/20 text-rose-400" 
+                                          : "bg-white/5 text-[#d5b075] hover:bg-white/10"
+                                      }`}
+                                    >
+                                      <Heart className={`w-3 h-3 ${alreadyAmen ? "fill-current text-rose-400" : ""}`} />
+                                      <span>AMÉM ({prayer.amenCount})</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {activeDiarySubTab === "pastor" && (
+                        /* GATED AI PASTORAL COUNSELOR CHAT */
+                        <div className="space-y-4">
+                          {!isPremiumActive() ? (
+                            /* Sub block for non-subscribers */
+                            <div className="p-8 text-center bg-gradient-to-b from-[#1c140d]/40 to-slate-950 border border-amber-500/10 rounded-2xl space-y-4 my-2">
+                              <span className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-400/20 flex items-center justify-center text-[#d5b075] mx-auto">
+                                <Lock className="w-6 h-6" />
+                              </span>
+                              <div className="space-y-1">
+                                <h4 className="text-base font-serif text-white font-medium">Diálogo Pastoral Interativo Premium</h4>
+                                <p className="text-xs text-slate-400 leading-relaxed max-w-sm mx-auto font-sans">
+                                  Tire dúvidas sobre passagens das escrituras originais, deite suas preocupações com respostas teológicas profundas e consoladoras feitas sob medida para você.
+                                </p>
+                              </div>
+                              <button
+                                id="btn-unlock-pastor-counseling"
+                                onClick={() => setShowSubscriptionModal(true)}
+                                className="py-2.5 px-6 bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 rounded-xl text-xs font-mono font-bold uppercase tracking-wider hover:scale-102 transition-all"
+                              >
+                                Fazer Aliança Premium ⭐
+                              </button>
+                            </div>
+                          ) : (
+                            /* Active Premium Chat dialogue with the AI Pastor Daniel */
+                            <div className="flex flex-col bg-slate-950/40 border border-amber-500/10 rounded-2xl overflow-hidden h-[440px] relative">
+                              <div className="bg-[#1a150c]/80 border-b border-amber-500/10 px-4 py-2.5 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                  <span className="text-xs font-serif font-semibold text-[#d5b075]">Conselheiro Pastoral Daniel</span>
+                                </div>
+                                <span className="text-[8px] bg-amber-500/20 text-amber-300 font-mono px-1.5 py-0.5 rounded-full font-bold">Premium</span>
+                              </div>
+
+                              <div className="flex-1 overflow-y-auto p-4 space-y-3.5 scrollbar-thin">
+                                {pastorChatDialog.map((msg, mIdx) => (
+                                  <div key={mIdx} className={`flex ${msg.role === "pilgrim" ? "justify-end" : "justify-start"}`}>
+                                    <div className={`p-3 max-w-[85%] rounded-2xl text-xs leading-relaxed font-sans ${
+                                      msg.role === "pilgrim"
+                                        ? "bg-[#d5b075] text-slate-950 rounded-br-none font-semibold shadow-sm"
+                                        : "bg-black/30 text-slate-200 border border-white/5 rounded-bl-none"
+                                    }`}>
+                                      {msg.text}
+                                    </div>
+                                  </div>
                                 ))}
+
+                                {isPastorAnswering && (
+                                  <div className="flex justify-start">
+                                    <div className="p-3 bg-black/20 text-slate-400 rounded-2xl rounded-bl-none border border-white/5 flex items-center gap-2 text-[10px]">
+                                      <Loader2 className="w-3 h-3 animate-spin text-[#d5b075]" />
+                                      <span>Pastor Daniel está refletindo nas escrituras...</span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="border-t border-white/5 p-2 bg-slate-950/40 flex gap-2">
+                                <input
+                                  id="pastor-chat-text-input"
+                                  type="text"
+                                  value={pastorChatText}
+                                  onChange={(e) => setPastorChatText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") handleSendPastorMessage();
+                                  }}
+                                  placeholder="Escreva uma pergunta ou anotação de fé..."
+                                  className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-[#d5b075]"
+                                />
+                                <button
+                                  id="btn-send-pastor-message"
+                                  onClick={handleSendPastorMessage}
+                                  disabled={!pastorChatText.trim()}
+                                  className="p-2 bg-[#d5b075] text-slate-950 font-bold rounded-xl text-xs uppercase tracking-wider hover:bg-[#cbad70]"
+                                >
+                                  Clamar
+                                </button>
                               </div>
                             </div>
-
-                            <p className="text-xs text-slate-205 leading-relaxed font-sans italic text-[#f3f1eb]">
-                              "{entry.text}"
-                            </p>
-
-                            {entry.reflection && (
-                              <div className="bg-[#1e1a12]/35 border border-[#d5b075]/15 p-3.5 rounded-xl space-y-2">
-                                <span className="text-[9px] font-mono text-[#d5b075] uppercase font-bold tracking-widest block">Conselhos Pastorais da Estrela</span>
-                                <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
-                                  {entry.reflection}
-                                </p>
-                                <p className="text-[10px] text-indigo-200 font-mono italic leading-none pt-1 border-t border-white/5">
-                                  <strong>Foco meditativo:</strong> {entry.prayerFocus}
-                                </p>
-                              </div>
-                            )}
-
-                          </div>
-                        ))}
-                      </div>
+                          )}
+                        </div>
+                      )}
 
                     </div>
 
@@ -1129,6 +1724,357 @@ export default function App() {
           <span>FEITO COM AMOR & REVERÊNCIA</span>
         </div>
       </footer>
+
+      {/* ------------------- AUTHENTICATION DIALOG OVERLAY ------------------- */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fade-in" id="auth-modal-dialog">
+          <div className="bg-[#edeae4] text-[#0A0D14] border border-[#0A0D14]/15 rounded-3xl p-6 md:p-8 w-full max-w-md shadow-2xl relative space-y-6">
+            <button 
+              id="btn-close-auth-modal"
+              onClick={() => setShowAuthModal(false)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-slate-800 p-1.5 rounded-full hover:bg-slate-200/50 transition-all"
+            >
+              <RotateCcw className="w-4 h-4 rotate-45" /> {/* Close icon visual representation */}
+            </button>
+
+            <div className="text-center space-y-1.5">
+              <div className="w-12 h-12 bg-[#121622] rounded-2xl flex items-center justify-center text-[#d5b075] font-serif text-xl font-bold mx-auto shadow-md">
+                ✝
+              </div>
+              <h3 className="text-xl font-serif font-semibold tracking-tight mt-3 text-[#121622]">Portal do Peregrino</h3>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                Entre com sua conta para salvar seu altar pessoal, sincronizar orações diárias e clamar em união com outros fiéis.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <button
+                id="btn-google-sign-in-action"
+                onClick={async () => {
+                  setIsAuthSubmitting(true);
+                  try {
+                    await loginWithGoogle();
+                    setShowAuthModal(false);
+                  } catch (e) {
+                    console.error(e);
+                  } finally {
+                    setIsAuthSubmitting(false);
+                  }
+                }}
+                disabled={isAuthSubmitting}
+                className="w-full py-3 px-4 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 font-bold text-xs tracking-wide text-slate-700 flex items-center justify-center gap-2.5 transition-all shadow-sm"
+              >
+                {isAuthSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+                ) : (
+                  <span className="text-[#db4437] font-bold">G</span>
+                )}
+                <span>Acessar com Conta Google</span>
+              </button>
+
+              <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400 my-4">
+                <div className="flex-1 h-px bg-slate-300"></div>
+                <span>OU CONEXÃO RÁPIDA</span>
+                <div className="flex-1 h-px bg-slate-300"></div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono font-bold uppercase text-slate-500 block">Seu Nome de Batismo</label>
+                  <input
+                    id="auth-input-name"
+                    type="text"
+                    value={authNameInput}
+                    onChange={(e) => setAuthNameInput(e.target.value)}
+                    placeholder="Ex: Gabriel Silva"
+                    className="w-full bg-white border border-slate-300 font-sans text-xs text-[#0A0D14] rounded-xl px-4 py-2.5 outline-none focus:border-[#d5b075]"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono font-bold uppercase text-slate-500 block">Endereço de E-mail</label>
+                  <input
+                    id="auth-input-email"
+                    type="email"
+                    value={authEmailInput}
+                    onChange={(e) => setAuthEmailInput(e.target.value)}
+                    placeholder="Ex: gabriel@fe.com"
+                    className="w-full bg-white border border-slate-300 font-sans text-xs text-[#0A0D14] rounded-xl px-4 py-2.5 outline-none focus:border-[#d5b075]"
+                  />
+                </div>
+
+                <button
+                  id="btn-email-sign-in-action"
+                  onClick={async () => {
+                    if (!authEmailInput || !authNameInput) return;
+                    setIsAuthSubmitting(true);
+                    try {
+                      await loginWithEmailSimulated(authEmailInput, authNameInput);
+                      setShowAuthModal(false);
+                    } catch (e) {
+                      console.error(e);
+                    } finally {
+                      setIsAuthSubmitting(false);
+                    }
+                  }}
+                  disabled={isAuthSubmitting || !authEmailInput.trim() || !authNameInput.trim()}
+                  className="w-full py-3 bg-[#121622] hover:bg-[#1f2638] text-[#e0b468] transition-all disabled:opacity-40 rounded-xl font-bold font-mono text-xs uppercase tracking-wider"
+                >
+                  Entrar como Peregrino Conservador
+                </button>
+              </div>
+            </div>
+
+            <p className="text-[9px] text-center font-mono text-slate-500">
+              Conexão 100% segura sob os preceitos do Santuário Sagrado.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------- SUBSCRIPTION PLAN GATE OVERLAY ------------------- */}
+      {showSubscriptionModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fade-in" id="subscription-modal-dialog">
+          <div className="bg-[#edeae4] text-[#0A0D14] border border-amber-500/20 rounded-3xl p-6 md:p-8 w-full max-w-xl shadow-2xl relative space-y-6">
+            <button 
+              id="btn-close-sub-modal"
+              onClick={() => {
+                setShowSubscriptionModal(false);
+                setIsCheckoutFinished(false);
+              }}
+              className="absolute top-4 right-4 text-slate-500 hover:text-slate-800 p-1.5 rounded-full hover:bg-slate-200/50 transition-all"
+            >
+              <RotateCcw className="w-4 h-4 rotate-45" /> {/* Close icon */}
+            </button>
+
+            {!isCheckoutFinished ? (
+              /* ACTIVE BILLING GATEWAY FORM */
+              <div className="space-y-6">
+                <div className="text-center space-y-1">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-400/20 text-amber-500 font-mono text-[9px] font-bold uppercase tracking-wider">
+                    ⭐ Aliança de Co-Semeador Premium
+                  </div>
+                  <h3 className="text-2xl font-serif font-bold text-[#121622] tracking-tight mt-2">Apadrinhe a Missão Santuário</h3>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                    Sua assinatura remove travas das vozes pacíficas masculinas e femininas, libera reflexões personalizadas da Palavra e ajuda na propagação pacífica do evangelho no ambiente digital.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Plan 1 */}
+                  <div 
+                    onClick={() => setSelectedPlanId("mensal")}
+                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${
+                      selectedPlanId === "mensal" 
+                        ? "border-amber-500 bg-white shadow-md scale-102" 
+                        : "border-slate-300/40 bg-white/50 hover:bg-white"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <span className="font-serif font-semibold text-sm">Plano Semeador</span>
+                      {selectedPlanId === "mensal" && <span className="text-amber-500 text-xs">●</span>}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">Reflexões Teológicas ilimitadas</p>
+                    <div className="mt-4">
+                      <span className="text-xl font-bold font-serif text-[#121622]">R$ 14,90</span>
+                      <span className="text-xs text-slate-400 font-mono">/mês</span>
+                    </div>
+                  </div>
+
+                  {/* Plan 2 */}
+                  <div 
+                    onClick={() => setSelectedPlanId("anual")}
+                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all relative overflow-hidden ${
+                      selectedPlanId === "anual" 
+                        ? "border-amber-500 bg-[#fffbeb] shadow-md scale-102" 
+                        : "border-slate-300/40 bg-white/50 hover:bg-white"
+                    }`}
+                  >
+                    <span className="absolute top-0 right-0 bg-amber-500 text-slate-950 text-[8px] font-mono font-bold uppercase px-2 py-0.5 rounded-bl-lg">
+                      Economize 45%
+                    </span>
+                    <div className="flex justify-between items-start">
+                      <span className="font-serif font-semibold text-sm">Fidelidade Aliança</span>
+                      {selectedPlanId === "anual" && <span className="text-amber-500 text-xs">●</span>}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">Estudo anual ininterrupto</p>
+                    <div className="mt-4">
+                      <span className="text-xl font-bold font-serif text-[#121622]">R$ 99,00</span>
+                      <span className="text-xs text-slate-400 font-mono">/ano</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/80 p-4 border border-slate-200 rounded-2xl space-y-4">
+                  <div className="flex gap-4 border-b border-slate-200 pb-2">
+                    <button
+                      onClick={() => setPaymentMethod("pix")}
+                      className={`text-xs font-mono font-bold uppercase pb-1 border-b-2 ${
+                        paymentMethod === "pix" ? "border-amber-500 text-amber-500" : "border-transparent text-slate-400"
+                      }`}
+                    >
+                      PIX de Pentecostes (Imediato)
+                    </button>
+                    <button
+                      onClick={() => setPaymentMethod("cartao")}
+                      className={`text-xs font-mono font-bold uppercase pb-1 border-b-2 ${
+                        paymentMethod === "cartao" ? "border-amber-500 text-amber-500" : "border-transparent text-slate-400"
+                      }`}
+                    >
+                      Cartão de Crédito
+                    </button>
+                  </div>
+
+                  {paymentMethod === "pix" ? (
+                    <div className="space-y-4 py-1">
+                      <div className="flex gap-3 items-center">
+                        <div className="w-16 h-16 bg-slate-900 rounded-xl flex items-center justify-center p-2 shrink-0 border border-[#d5b075]/20">
+                          {/* Beautiful simulated PIX QR Code with glowing Cross symbol */}
+                          <div className="text-center">
+                            <span className="text-[#d5b075] text-[6px] font-mono leading-none font-bold uppercase block">PIX REGIONAL</span>
+                            <span className="text-xl text-white block mt-0.5">✝</span>
+                            <span className="text-slate-400 text-[5px] font-mono block leading-none">CÉU INTEGRADO</span>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs font-serif font-semibold">Chave de Doação Celestial Copie e Cole:</p>
+                          <p className="text-[9px] text-[#2c303a] font-mono bg-[#121622]/5 p-2 border border-slate-300 rounded-lg break-all select-all leading-tight max-w-[280px]">
+                            00020126360014br.gov.bcb.pix0114santuario5583728192019aliamcapremium
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          id="btn-copy-pix-key"
+                          onClick={() => {
+                            navigator.clipboard.writeText("00020126360014br.gov.bcb.pix0114santuario5583728192019aliamcapremium");
+                            setSimulatedPixCopied(true);
+                            setTimeout(() => setSimulatedPixCopied(false), 2000);
+                          }}
+                          className="flex-1 py-2 border border-slate-300 font-mono text-[10px] font-bold text-slate-705 text-slate-700 uppercase tracking-wider rounded-xl hover:bg-slate-50"
+                        >
+                          {simulatedPixCopied ? "Copiado com sucesso!" : "Copiar Código Pix"}
+                        </button>
+                        <button
+                          id="btn-simulate-payment-pix"
+                          onClick={handleUpgradeToPremium}
+                          disabled={isCheckoutProcessing}
+                          className="flex-1 py-2 bg-gradient-to-r from-amber-400 to-amber-500 font-serif text-[10px] font-bold text-slate-950 uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-md"
+                        >
+                          {isCheckoutProcessing ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Sincronizando Altar...</span>
+                            </>
+                          ) : (
+                            <span>Confirmar Pagamento</span>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="col-span-2 space-y-1">
+                          <label className="text-[9px] font-mono font-bold uppercase text-slate-400 block">Número do Cartão de dote</label>
+                          <input
+                            type="text"
+                            placeholder="4442 1204 8839 1239"
+                            value={ccNumber}
+                            onChange={(e) => setCcNumber(e.target.value)}
+                            className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-sans outline-none focus:border-amber-250 focus:border-amber-500"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-mono font-bold uppercase text-slate-400 block">Data Expiração</label>
+                          <input
+                            type="text"
+                            placeholder="12/29"
+                            value={ccExp}
+                            onChange={(e) => setCcExp(e.target.value)}
+                            className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-sans outline-none focus:border-amber-500"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-mono font-bold uppercase text-slate-400 block">CVV</label>
+                          <input
+                            type="text"
+                            placeholder="770"
+                            value={ccCvv}
+                            onChange={(e) => setCcCvv(e.target.value)}
+                            className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-sans outline-none focus:border-amber-500"
+                          />
+                        </div>
+                        <div className="col-span-2 space-y-1">
+                          <label className="text-[9px] font-mono font-bold uppercase text-slate-400 block">Nome do Titular da Fé</label>
+                          <input
+                            type="text"
+                            placeholder="Maria de Lourdes"
+                            value={ccName}
+                            onChange={(e) => setCcName(e.target.value)}
+                            className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-sans outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        id="btn-simulate-payment-cc"
+                        onClick={handleUpgradeToPremium}
+                        disabled={isCheckoutProcessing || !ccNumber || !ccName}
+                        className="w-full py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-mono font-bold text-[10px] uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-md"
+                      >
+                        {isCheckoutProcessing ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Processando Dote Premium...</span>
+                          </>
+                        ) : (
+                          <span>Apoiar com Cartão de Crédito</span>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* ALREADY COMPLETED BLESSING POPUP window */
+              <div className="text-center py-6 space-y-5 animate-fade-in">
+                <span className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-400/20 flex items-center justify-center text-emerald-500 mx-auto text-2xl">
+                  ✓
+                </span>
+                <div className="space-y-1">
+                  <h3 className="text-xl font-serif font-bold text-slate-900">Aliança Consagrada!</h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed font-sans">
+                    Deus abençoe poderosamente sua dedicação e contribuição amorosa, {userName}! Seu status Premium está ativo. Todas as vozes, frequências contemplativas e o conselho pastoral agora estão integralmente destravados para você.
+                  </p>
+                </div>
+
+                <div className="bg-slate-900 border border-amber-500/25 p-3 rounded-xl flex items-center justify-between mx-auto max-w-sm">
+                  <div className="text-left">
+                    <span className="text-[7px] font-mono text-amber-400 uppercase block font-bold leading-none">Peregrino Celestial</span>
+                    <span className="text-xs font-serif font-semibold text-white block mt-1">{userName}</span>
+                  </div>
+                  <span className="text-[9px] bg-amber-500/20 text-[#d0a75c] px-2 py-0.5 rounded-full font-bold uppercase font-mono border border-amber-500/30">
+                    ⭐ Premium Active
+                  </span>
+                </div>
+
+                <button
+                  id="btn-close-sub-success"
+                  onClick={() => {
+                    setShowSubscriptionModal(false);
+                    setIsCheckoutFinished(false);
+                  }}
+                  className="py-2 px-6 bg-[#121622] text-[#e0b468] rounded-xl text-xs font-mono font-bold uppercase tracking-wider"
+                >
+                  Entrar no Santuário Destravado
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );
