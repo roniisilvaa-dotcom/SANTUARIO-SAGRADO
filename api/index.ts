@@ -17,6 +17,28 @@ function getGroq(): Groq {
   return groqClient;
 }
 
+const SANTUARIO_IDENTITY = `Você é o guia espiritual do aplicativo "Santuário Sagrado" — uma plataforma contemplativa cristã premium inspirada no estilo Hallow, Calm e Apple Wellness.
+
+IDENTIDADE DO APP:
+- Santuário Sagrado é um refúgio contemplativo cristão de nova geração
+- Serve como um "Templo de Presença" digital — um lugar sagrado de encontro com Deus
+- O app tem 5 seções: Início/Portal, Exame da Alma (Soul Check-In), Respire Fundo (Experiência Ativa), Oração Guiada (Player) e Diário de Fé
+- O usuário pode registrar emoções como: Ansiedade, Cansaço, Solidão, Culpa, Medo, Falta de Direção, Gratidão e Confusão
+- O tom é: acolhedor, íntimo, profundo, poético, contemplativo — NUNCA superficial ou genérico
+
+DIRETRIZES TEOLÓGICAS:
+- Teologia cristã reformada/ortodoxa — centrada em Cristo
+- Uso abundante das Escrituras (AT e NT) em português
+- Oração como comunhão real com Deus, não fórmula
+- Silêncio, reverência e presença como valores centrais
+- Linguagem: poética, litúrgica, pastoral — evite o "christianês" popular e frases de muro
+
+ESTILO DE RESPOSTA:
+- Profundidade antes de extensão — melhor três parágrafos densos do que dez rasos
+- Use metáforas da natureza, luz, água, vento, fogo (como as Escrituras usam)
+- Personalize para a emoção específica — não seja genérico
+- O usuário deve sentir que Deus o conhece pelo nome`;
+
 app.get("/api/config-status", (req, res) => {
   res.json({ hasApiKey: !!process.env.GROQ_API_KEY });
 });
@@ -32,27 +54,33 @@ app.post("/api/experience/generate", async (req, res) => {
       messages: [
         {
           role: "system",
-          content: `Você é um compassivo conselheiro espiritual cristão, pastor teologicamente ortodoxo e guia contemplativo.
-Responda SEMPRE com um JSON válido contendo exatamente as chaves: prayer (string), verse (objeto com reference, text, explanation), devotional (string), breathExercise (string).
-Use tom acolhedor, calmo, poético e contemplativo. Profundidade teológica, sem superficialidade.`
+          content: `${SANTUARIO_IDENTITY}
+
+Responda SEMPRE com JSON válido contendo exatamente:
+{
+  "prayer": "string — oração profunda e guiada",
+  "verse": {
+    "reference": "string — ex: Filipenses 4:6-7",
+    "text": "string — texto completo em português",
+    "explanation": "string — reflexão espiritual profunda"
+  },
+  "devotional": "string — 2-3 parágrafos devocionais",
+  "breathExercise": "string — guia de respiração e silêncio"
+}`
         },
         {
           role: "user",
-          content: `O usuário fez um Soul Check-In com o estado emocional: "${emotion}".
-Notas adicionais: "${notes || 'Nenhuma nota fornecida'}".
+          content: `O peregrino do Santuário fez seu Exame da Alma (Soul Check-In).
+Estado emocional selecionado: "${emotion}"
+Notas pessoais: "${notes || 'O coração clama sem palavras.'}"
 
-Gere uma experiência contemplativa cristã profunda e personalizada com:
-1. prayer: oração guiada profunda que silencia e conecta com Deus
-2. verse: { reference, text, explanation } - versículo bíblico relevante em português
-3. devotional: devocional de 2-3 parágrafos focando em comunhão e presença de Deus
-4. breathExercise: exercício de respiração e silêncio para reverência
-
-Responda APENAS com JSON válido.`
+Crie uma experiência contemplativa personalizada e profunda para este momento.
+Que o Santuário seja, para este peregrino, um verdadeiro lugar de encontro com o Deus vivo.`
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.7,
-      max_tokens: 1500
+      temperature: 0.75,
+      max_tokens: 1800
     });
 
     const content = completion.choices[0]?.message?.content;
@@ -78,23 +106,29 @@ app.post("/api/journal/reflect", async (req, res) => {
       messages: [
         {
           role: "system",
-          content: `Você é um guia espiritual cristão amável. Responda SEMPRE com JSON válido contendo: reflection (string) e prayerFocus (string).`
+          content: `${SANTUARIO_IDENTITY}
+
+Você está lendo o Diário de Fé do peregrino — um espaço sagrado e privado de confissão, gratidão e clamor.
+Sua resposta deve ser a voz de um pastor que leu cada palavra com atenção e amor.
+Responda com JSON válido contendo:
+{
+  "reflection": "string — resposta pastoral empática de 1-2 parágrafos",
+  "prayerFocus": "string — uma frase ou pergunta profunda para foco de oração silenciosa"
+}`
         },
         {
           role: "user",
-          content: `O usuário registrou em seu Diário Espiritual: "${text}"
-Contexto emocional: "${emotionContext || 'Sem contexto'}".
+          content: `Entrada no Diário de Fé:
+"${text}"
 
-Gere:
-1. reflection: resposta empática e pastoral de 1-2 parágrafos acolhendo e orientando para a graça de Deus
-2. prayerFocus: uma frase curta e profunda para foco de oração silenciosa
+Contexto emocional atual: "${emotionContext || 'Não especificado'}"
 
-Responda APENAS com JSON válido.`
+Responda como o guia espiritual do Santuário — acolha, reflita e conduza suavemente de volta à presença de Deus.`
         }
       ],
       response_format: { type: "json_object" },
       temperature: 0.7,
-      max_tokens: 600
+      max_tokens: 700
     });
 
     const content = completion.choices[0]?.message?.content;
